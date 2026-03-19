@@ -1,6 +1,12 @@
 "use client"
 
 import { encodeFunctionData, maxUint256, createPublicClient, http, fallback, erc20Abi } from "viem"
+
+// Dev-only logging
+const isDev = process.env.NODE_ENV !== "production"
+const devLog = (...args: unknown[]) => { if (isDev) console.log(...args) }
+const devError = (...args: unknown[]) => { if (isDev) console.error(...args) }
+const devWarn = (...args: unknown[]) => { if (isDev) console.warn(...args) }
 import type { WalletClient } from "viem"
 import { polygon } from "viem/chains"
 import { RelayClient, RelayerTransactionState, OperationType } from "@polymarket/builder-relayer-client"
@@ -79,10 +85,10 @@ export async function isSafeDeployed(
     })
     const code = await publicClient.getCode({ address: safeAddress as `0x${string}` })
     const isDeployed = !!code && code !== "0x"
-    console.log(`[Safe] Checking ${safeAddress}: ${isDeployed ? 'DEPLOYED' : 'NOT DEPLOYED'}`)
+    devLog(`[Safe] Checking ${safeAddress}: ${isDeployed ? 'DEPLOYED' : 'NOT DEPLOYED'}`)
     return isDeployed
   } catch (err: any) {
-    console.warn("[Safe] Error checking deployment:", err?.message || err)
+    devWarn("[Safe] Error checking deployment:", err?.message || err)
     return false
   }
 }
@@ -124,11 +130,11 @@ export async function checkAllApprovals(safeAddress: string): Promise<boolean> {
       erc20Approvals.every((approved) => approved) &&
       erc1155Approvals.every((approved) => approved)
 
-    console.log("[Approvals] USDC:", erc20Approvals, "CTF:", erc1155Approvals, "All:", allApproved)
+    devLog("[Approvals] USDC:", erc20Approvals, "CTF:", erc1155Approvals, "All:", allApproved)
 
     return allApproved
   } catch (err) {
-    console.error("[Approvals] Check failed:", err)
+    devError("[Approvals] Check failed:", err)
     return false
   }
 }
@@ -168,7 +174,7 @@ export async function setAllTokenApprovals(
   // Check if approvals are already set
   const alreadyApproved = await checkAllApprovals(safeAddress)
   if (alreadyApproved) {
-    console.log("[Approvals] All approvals already set, skipping transactions")
+    devLog("[Approvals] All approvals already set, skipping transactions")
     return
   }
 
@@ -198,11 +204,11 @@ export async function setAllTokenApprovals(
     })),
   ]
 
-  console.log("[Approvals] Executing", txs.length, "approval transactions...")
+  devLog("[Approvals] Executing", txs.length, "approval transactions...")
 
   const response = await relayClient.execute(txs, "Set all token approvals for trading")
 
-  console.log("[Approvals] Got response, transactionID:", response.transactionID)
+  devLog("[Approvals] Got response, transactionID:", response.transactionID)
 
   // Use pollUntilState like deploy does - more reliable than wait()
   const result = await relayClient.pollUntilState(
@@ -216,7 +222,7 @@ export async function setAllTokenApprovals(
     3000,
   )
 
-  console.log("[Approvals] Poll result:", result)
+  devLog("[Approvals] Poll result:", result)
 
   if (!result) {
     throw new Error("Token approvals failed - no result from relayer")
@@ -321,7 +327,7 @@ export async function isConditionResolved(conditionId: string): Promise<boolean>
     })
     return payoutDenominator > BigInt(0)
   } catch (err) {
-    console.error("[isConditionResolved] Error:", err)
+    devError("[isConditionResolved] Error:", err)
     return false
   }
 }

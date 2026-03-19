@@ -1,10 +1,37 @@
 import { NextRequest, NextResponse } from "next/server"
 import * as crypto from "crypto"
+import { rateLimit, getClientIp } from "@/lib/rateLimit"
+import { getAuthenticatedAddress } from "@/lib/serverAuth"
 
 const RELAYER_HOST = "https://relayer-v2.polymarket.com"
 
+const RATE_LIMIT = 30
+const RATE_WINDOW = 10_000
+
+// Maximum request body size (50KB)
+const MAX_BODY_SIZE = 50 * 1024
+
 const ALLOWED_EXACT = new Set(["/nonce", "/relay-payload", "/submit", "/deployed"])
 const ALLOWED_PREFIXES = ["/transaction", "/transactions"]
+
+/** H1: Reject path segments that could traverse directories */
+function hasPathTraversal(segments: string[]): boolean {
+  return segments.some(s => s === ".." || s === "." || s === "")
+}
+
+// Allowed query parameters for relayer API
+const ALLOWED_QUERY_PARAMS = new Set([
+  "address", "safe_address", "nonce", "transaction_hash",
+])
+
+function validateQueryParams(searchParams: URLSearchParams): string | null {
+  for (const [key] of searchParams) {
+    if (!ALLOWED_QUERY_PARAMS.has(key.toLowerCase())) {
+      return `Unexpected query parameter: ${key}`
+    }
+  }
+  return null
+}
 
 function buildHmacSignature(
   secret: string,
@@ -54,7 +81,30 @@ function createBuilderHeaders(
 }
 
 async function proxyRequest(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+  // C1: Require authenticated session (wallet signature verified via /api/auth/session)
+  const authenticatedAddress = getAuthenticatedAddress(req)
+  if (!authenticatedAddress) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+  }
+
+  // C2: Rate limit per IP and per authenticated address
+  const ip = getClientIp(req)
+  const { allowed } = rateLimit(`relayer:${ip}`, RATE_LIMIT, RATE_WINDOW)
+  if (!allowed) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 })
+  }
+  const { allowed: addrAllowed } = rateLimit(`relayer:addr:${authenticatedAddress}`, RATE_LIMIT, RATE_WINDOW)
+  if (!addrAllowed) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 })
+  }
+
   const { path } = await params
+
+  // H1: Path traversal protection
+  if (hasPathTraversal(path)) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 400 })
+  }
+
   const relayerPath = "/" + path.join("/")
 
   const isAllowed =
@@ -62,6 +112,12 @@ async function proxyRequest(req: NextRequest, { params }: { params: Promise<{ pa
     ALLOWED_PREFIXES.some((prefix) => relayerPath === prefix || relayerPath.startsWith(prefix + "/"))
   if (!isAllowed) {
     return NextResponse.json({ error: "Endpoint not allowed" }, { status: 403 })
+  }
+
+  // Validate query parameters
+  const queryError = validateQueryParams(req.nextUrl.searchParams)
+  if (queryError) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
   const method = req.method.toUpperCase()
@@ -74,7 +130,29 @@ async function proxyRequest(req: NextRequest, { params }: { params: Promise<{ pa
 
   let bodyStr: string | undefined
   if (!isRead) {
-    bodyStr = await req.text()
+    // Read body with size limit
+    const reader = req.body?.getReader()
+    if (reader) {
+      const chunks: Uint8Array[] = []
+      let totalSize = 0
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          totalSize += value.length
+          if (totalSize > MAX_BODY_SIZE) {
+            return NextResponse.json({ error: "Request body too large" }, { status: 413 })
+          }
+          chunks.push(value)
+        }
+        bodyStr = chunks.length > 0
+          ? new TextDecoder().decode(Buffer.concat(chunks))
+          : undefined
+      } catch {
+        return NextResponse.json({ error: "Failed to read request body" }, { status: 400 })
+      }
+    }
   }
 
   const builderHeaders = createBuilderHeaders(method, relayerPath, bodyStr)
@@ -94,6 +172,24 @@ async function proxyRequest(req: NextRequest, { params }: { params: Promise<{ pa
     })
 
     const data = await resp.text()
+
+    // Sanitize error responses
+    if (!resp.ok) {
+      try {
+        const parsed = JSON.parse(data)
+        if (parsed.error && typeof parsed.error === "string") {
+          return new NextResponse(data, {
+            status: resp.status,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+      } catch {
+        return NextResponse.json(
+          { error: "Upstream service error" },
+          { status: resp.status >= 500 ? 502 : resp.status }
+        )
+      }
+    }
 
     return new NextResponse(data, {
       status: resp.status,

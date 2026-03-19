@@ -1,6 +1,11 @@
 const GAMMA_BASE_URL = "https://gamma-api.polymarket.com"
 const GAMMA_PROXY_URL = "/api/gamma"
 
+// Dev-only logging
+const isDev = process.env.NODE_ENV !== "production"
+const devLog = (...args: unknown[]) => { if (isDev) console.log(...args) }
+const devError = (...args: unknown[]) => { if (isDev) console.error(...args) }
+
 // Use proxy for client-side calls (avoids CORS), direct URL for server-side
 function getBaseUrl() {
   return typeof window !== "undefined" ? GAMMA_PROXY_URL : GAMMA_BASE_URL
@@ -146,12 +151,12 @@ export async function getMarketsByConditionIds(conditionIds: string[]): Promise<
     })
 
     if (!res.ok) {
-      console.error("[Gamma] Markets fetch failed:", res.status)
+      devError("[Gamma] Markets fetch failed:", res.status)
       return result
     }
 
     const markets = await res.json() as Market[]
-    console.log("[Gamma] Fetched markets:", markets.length)
+    devLog("[Gamma] Fetched markets:", markets.length)
 
     for (const market of markets) {
       // Get outcome from the order - we'll use "Yes" as default since we can't know from here
@@ -165,10 +170,10 @@ export async function getMarketsByConditionIds(conditionIds: string[]): Promise<
       })
     }
 
-    console.log("[Gamma] Market info map size:", result.size)
+    devLog("[Gamma] Market info map size:", result.size)
     return result
   } catch (err) {
-    console.error("[Gamma] Error fetching markets:", err)
+    devError("[Gamma] Error fetching markets:", err)
     return result
   }
 }
@@ -185,12 +190,12 @@ export async function getMarketsInfoByTokenIds(tokenIds: string[]): Promise<Map<
     })
 
     if (!res.ok) {
-      console.error("[Gamma] Markets by token fetch failed:", res.status)
+      devError("[Gamma] Markets by token fetch failed:", res.status)
       return result
     }
 
     const markets = await res.json() as Market[]
-    console.log("[Gamma] Fetched markets by token:", markets.length)
+    devLog("[Gamma] Fetched markets by token:", markets.length)
 
     for (const market of markets) {
       let tokens: { token_id: string; outcome: string }[] = []
@@ -216,10 +221,10 @@ export async function getMarketsInfoByTokenIds(tokenIds: string[]): Promise<Map<
       }
     }
 
-    console.log("[Gamma] Market info by token map size:", result.size)
+    devLog("[Gamma] Market info by token map size:", result.size)
     return result
   } catch (err) {
-    console.error("[Gamma] Error fetching markets by token:", err)
+    devError("[Gamma] Error fetching markets by token:", err)
     return result
   }
 }

@@ -24,9 +24,10 @@ import {
 } from "@/lib/polymarket/relayer"
 import { walletClientToSigner } from "@/lib/wagmi-ethers-adapter"
 
-// Temporary: always log for production debugging
-const devLog = (...args: unknown[]) => { console.log(...args) }
-const devError = (...args: unknown[]) => { console.error(...args) }
+// Dev-only logging - disabled in production
+const isDev = process.env.NODE_ENV !== "production"
+const devLog = (...args: unknown[]) => { if (isDev) console.log(...args) }
+const devError = (...args: unknown[]) => { if (isDev) console.error(...args) }
 
 const STORAGE_KEYS = {
   setup: (addr: string) => `poly_setup_${addr.toLowerCase()}`,
@@ -317,6 +318,48 @@ export function useSession() {
   }, [walletClient, address, state.safeAddress, state.l2Ready])
 
   // ══════════════════════════════════════════════════════════════════
+  // SERVER AUTH — sign message to get HttpOnly session cookie
+  // Must be called before any relayer/CLOB authenticated operations
+  // ══════════════════════════════════════════════════════════════════
+
+  const authenticateWithServer = useCallback(async (): Promise<boolean> => {
+    if (!walletClient?.account || !address) return false
+
+    try {
+      const timestamp = Math.floor(Date.now() / 1000)
+      const message = `Sign in to Polymarket Trading\n\nAddress: ${address.toLowerCase()}\nTimestamp: ${timestamp}`
+
+      const signature = await walletClient.signMessage({
+        message,
+        account: walletClient.account,
+      })
+
+      const resp = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, signature, timestamp }),
+      })
+
+      if (!resp.ok) {
+        devError("[Auth] Server authentication failed:", resp.status)
+        return false
+      }
+
+      devLog("[Auth] Server session established")
+      return true
+    } catch (err: any) {
+      const msg = err?.message ?? ""
+      const code = err?.code
+      if (code === 4001 || msg.includes("rejected") || msg.includes("denied")) {
+        devLog("[Auth] User rejected server auth signature")
+      } else {
+        devError("[Auth] Server auth failed:", msg)
+      }
+      return false
+    }
+  }, [walletClient, address])
+
+  // ══════════════════════════════════════════════════════════════════
   // ACTIONS — each one does exactly one thing, requires walletClient
   // ══════════════════════════════════════════════════════════════════
 
@@ -443,6 +486,15 @@ export function useSession() {
       isDeployed: state.isDeployed, approvalsSet: state.approvalsSet, l2Ready: state.l2Ready,
     })
 
+    // Step 0: Authenticate with server (sets HttpOnly session cookie)
+    toast.loading("Authenticating - please sign in your wallet...", { id: "session-auth" })
+    const authOk = await authenticateWithServer()
+    if (!authOk) {
+      toast.error("Server authentication failed", { id: "session-auth" })
+      return false
+    }
+    toast.success("Authenticated!", { id: "session-auth" })
+
     // Step 1
     if (!state.isDeployed) {
       const ok = await handleDeploySafe()
@@ -461,7 +513,7 @@ export function useSession() {
 
     setState((s) => ({ ...s, isReady: true }))
     return true
-  }, [state.isDeployed, state.approvalsSet, state.l2Ready, handleDeploySafe, handleSetApprovals, handleCreateL2Keys])
+  }, [state.isDeployed, state.approvalsSet, state.l2Ready, authenticateWithServer, handleDeploySafe, handleSetApprovals, handleCreateL2Keys])
 
   const getClient = useCallback(() => clientRef.current, [])
   const getRelayClient = useCallback(() => relayClientRef.current, [])
@@ -472,6 +524,8 @@ export function useSession() {
       localStorage.removeItem(STORAGE_KEYS.creds(address))
       clearSession(address)
     }
+    // Clear server session cookie
+    fetch("/api/auth/session", { method: "DELETE" }).catch(() => {})
     hardReset()
   }, [address, hardReset])
 
