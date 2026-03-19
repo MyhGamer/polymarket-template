@@ -4,7 +4,7 @@ A fork of [suhailkakar/prediction-market-starter-kit](https://github.com/suhailk
 
 Fully ready to run — just add your env keys and go. (there can be a lot bugs cuz claude is stupid sometimes :) use on your own risk)
 
-**Repo:** [github.com/MyhGamer/polymarket-template](https://github.com/MyhGamer/polymarket-template)
+live demo website to test - https://example.polylerts.com/
 
 ## What's different from the original
 
