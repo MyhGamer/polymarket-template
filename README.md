@@ -1,8 +1,10 @@
 # Prediction Market Starter Kit
 
-A fork of [suhailkakar/prediction-market-starter-kit](https://github.com/suhailkakar/prediction-market-starter-kit) rebuilt with wagmi instead of Privy, plus limit orders, position redemption, deposits/withdrawals with bridging, and other improvements. Fully ready to run — just add your env keys and go.
+A fork of [suhailkakar/prediction-market-starter-kit](https://github.com/suhailkakar/prediction-market-starter-kit) rebuilt with wagmi instead of Privy, plus limit orders, position redemption, deposits/withdrawals with bridging, and other improvements.
 
-**Live demo:** [example.polylerts.com](https://example.polylerts.com)
+Fully ready to run — just add your env keys and go. (there can be a lot bugs cuz claude is stupid sometimes :) use on your own risk)
+
+**Repo:** [github.com/MyhGamer/polymarket-template](https://github.com/MyhGamer/polymarket-template)
 
 ## What's different from the original
 
@@ -20,15 +22,14 @@ A fork of [suhailkakar/prediction-market-starter-kit](https://github.com/suhailk
 ## Quick start
 
 ```bash
-git clone <your-repo-url>
-cd prediction-market-starter-kit
+git clone https://github.com/MyhGamer/polymarket-template.git
+cd polymarket-template
 pnpm install
 ```
 
 Create `.env.local` with your keys:
 
 ```env
-NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 POLYMARKET_BUILDER_API_KEY=your-builder-api-key
 POLYMARKET_BUILDER_SECRET=your-builder-secret
 POLYMARKET_BUILDER_PASSPHRASE=your-builder-passphrase
