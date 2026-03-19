@@ -21,7 +21,7 @@ function hasPathTraversal(segments: string[]): boolean {
 
 // Allowed query parameters for relayer API
 const ALLOWED_QUERY_PARAMS = new Set([
-  "address", "safe_address", "nonce", "transaction_hash", "type",
+  "address", "safe_address", "nonce", "transaction_hash", "type", "id",
 ])
 
 function validateQueryParams(searchParams: URLSearchParams): string | null {
