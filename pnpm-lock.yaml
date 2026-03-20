@@ -26,6 +26,9 @@ importers:
       '@polymarket/clob-client':
         specifier: ^4.22.8
         version: 4.22.8(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@radix-ui/react-use-controllable-state':
+        specifier: ^1.2.2
+        version: 1.2.2(@types/react@19.2.14)(react@19.2.4)
       '@tanstack/react-query':
         specifier: ^5.91.0
         version: 5.91.0(react@19.2.4)

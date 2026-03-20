@@ -96,6 +96,7 @@ export function useSession() {
   const lastAddressRef = useRef<string | null>(null)
   const sessionVersionRef = useRef(0)
   const checkingRef = useRef(false)
+  const serverAuthRef = useRef(false)
 
   // Use wagmi walletClient if available, otherwise fallback to direct provider.
   // Memoize fallback so it doesn't recreate on every render.
@@ -121,6 +122,7 @@ export function useSession() {
     relayClientRef.current = null
     fallbackRef.current = null
     checkingRef.current = false
+    serverAuthRef.current = false
     sessionVersionRef.current += 1
     setState(() => ({
       ...INITIAL_STATE,
@@ -323,6 +325,7 @@ export function useSession() {
   // ══════════════════════════════════════════════════════════════════
 
   const authenticateWithServer = useCallback(async (): Promise<boolean> => {
+    if (serverAuthRef.current) return true
     if (!walletClient?.account || !address) return false
 
     try {
@@ -346,6 +349,7 @@ export function useSession() {
       }
 
       devLog("[Auth] Server session established")
+      serverAuthRef.current = true
       return true
     } catch (err: any) {
       const msg = err?.message ?? ""
@@ -370,6 +374,12 @@ export function useSession() {
     }
     if (!relayClientRef.current) {
       setState((s) => ({ ...s, error: "Relay client not ready. Please wait..." }))
+      return false
+    }
+
+    // Ensure server auth before relayer calls
+    if (!(await authenticateWithServer())) {
+      setState((s) => ({ ...s, error: "Server authentication failed" }))
       return false
     }
 
@@ -400,7 +410,7 @@ export function useSession() {
       setState((s) => ({ ...s, isInitializing: false, error: message }))
       return false
     }
-  }, [walletClient, address, switchChainAsync])
+  }, [walletClient, address, switchChainAsync, authenticateWithServer])
 
   const handleSetApprovals = useCallback(async (): Promise<boolean> => {
     const safeAddress = state.safeAddress || (address ? deriveSafeAddress(address) : null)
@@ -410,6 +420,12 @@ export function useSession() {
     }
     if (!relayClientRef.current) {
       setState((s) => ({ ...s, error: "Relay client not ready" }))
+      return false
+    }
+
+    // Ensure server auth before relayer calls
+    if (!(await authenticateWithServer())) {
+      setState((s) => ({ ...s, error: "Server authentication failed" }))
       return false
     }
 
@@ -443,12 +459,18 @@ export function useSession() {
       setState((s) => ({ ...s, isInitializing: false, error: message }))
       return false
     }
-  }, [walletClient, address, state.safeAddress, switchChainAsync])
+  }, [walletClient, address, state.safeAddress, switchChainAsync, authenticateWithServer])
 
   const handleCreateL2Keys = useCallback(async (): Promise<boolean> => {
     const safeAddress = state.safeAddress || (address ? deriveSafeAddress(address) : null)
     if (!walletClient?.account || !address || !safeAddress) {
       setState((s) => ({ ...s, error: "Wallet not ready" }))
+      return false
+    }
+
+    // Ensure server auth before CLOB calls
+    if (!(await authenticateWithServer())) {
+      setState((s) => ({ ...s, error: "Server authentication failed" }))
       return false
     }
 
@@ -478,7 +500,7 @@ export function useSession() {
       setState((s) => ({ ...s, isInitializing: false, error: message }))
       return false
     }
-  }, [walletClient, address, state.safeAddress, switchChainAsync])
+  }, [walletClient, address, state.safeAddress, switchChainAsync, authenticateWithServer])
 
   // ── Full setup (only for NEW wallets — no safe deployed) ──
   const runFullSetup = useCallback(async (): Promise<boolean> => {
